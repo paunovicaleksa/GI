@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 .ipynb_checkpoints/
 *.h5ad
+
+# analysis outputs — intermediates are large and regenerable
+results/
+figures/

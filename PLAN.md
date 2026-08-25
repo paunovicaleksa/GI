@@ -103,29 +103,93 @@ in some steps and not others.
 
 ## Environment
 
-`.venv/` is local and git-ignored — never commit it. `requirements.txt` is the
-shared recipe:
+The project must run on **both Linux and native Windows**. That drove three changes
+from the original Linux-only setup; each is recorded below with its reason.
+
+### Python 3.12 on both platforms
+
+This plan originally specified the Linux venv's 3.10.12. That version cannot be
+matched on Windows — python.org never shipped a Windows installer past **3.10.11**,
+because 3.10 went security-only (source-release) from 3.10.12 onward.
+
+3.12 is the version both platforms can actually agree on:
+
+- **Floor:** `scanpy` and `numba` both declare `requires_python >= 3.10`.
+- **Ceiling:** `tensorflow` 2.17 (pulled in by `panhumanpy`) publishes no wheels
+  above `cp312`. So 3.13 would silently rule out our Azimuth annotation route.
+- Every compiled dependency has a `cp312` wheel for Windows and Linux alike.
+
+### Setup
+
+`.venv/` is local and git-ignored — never commit it.
 
 ```bash
-python3 -m venv .venv
+# Linux
+python3.12 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+```
+
+```powershell
+# Windows
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Then, on both:
+
+```bash
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
 python -m ipykernel install --user --name=nanoplastics-scrnaseq \
   --display-name="Python (nanoplastics-scrnaseq)"
 ```
 
-Note `python3-venv` must be installed system-wide first
-(`sudo apt install python3.10-venv` on Ubuntu).
+Install `requirements.txt` in **one** `pip install` pass rather than adding packages
+incrementally, so the resolver sees every constraint at once (see numpy, below).
 
-Three packages still to add and then re-freeze into `requirements.txt`:
+**A C++ compiler is required on both platforms.** `scanorama` depends on `annoy`,
+which publishes no wheels for Windows or Linux and always builds from source:
+MSVC Build Tools (C++ x86/x64 workload) on Windows, `gcc`/`g++` on Linux. If the
+build fails on Windows, retry from the "x64 Native Tools Command Prompt for VS 2022"
+so `vcvarsall` is on PATH — do not swap batch-correction method to work around it.
 
-- `scanorama` — batch correction (Section 8)
-- `panhumanpy` — Pan-Human Azimuth annotation (Section 11); needs Python ≥3.9
-  (venv is 3.10.12). Model weights download on first use, not via pip.
-- `celltypist` — immune-specialised annotation (Section 11)
+### Requirements files
 
-Already installed: `scanpy` (provides `sc.pp.scrublet`), `pydeseq2`, `gseapy`,
-`leidenalg`, `python-igraph`, `jupyterlab`. `harmonypy` is now unused.
+`requirements.txt` is now a **direct-dependency list**, not a `pip freeze`. A freeze
+cannot be shared across platforms: on Windows the graph includes `pywinpty` and
+`tensorflow-intel`, neither of which installs on Linux. The direct list resolves
+correctly on both.
+
+| File | Purpose |
+|---|---|
+| `requirements.txt` | ~20 direct dependencies — what both of us install from |
+| `requirements-lock-linux-py310.txt` | the original author's Linux/3.10 freeze, kept for reference |
+| `requirements-lock-windows-py312.txt` | full freeze from this machine, for exact reproduction |
+
+The three previously-outstanding packages — `scanorama` (Section 8), `panhumanpy`
+and `celltypist` (Section 11) — are now **in** `requirements.txt`. `panhumanpy`
+downloads its model weights on first use, not via pip. `harmonypy` was unused and
+has been dropped.
+
+### Consequence: numpy is 1.26.4, not 2.2.6
+
+`panhumanpy` pins `tensorflow==2.17` and `scikit-learn==1.6.0` exactly, and TF 2.17
+requires `numpy>=1.26.0,<2.0.0`. The old Linux freeze pinned `numpy==2.2.6`, so
+adding these packages rolls numpy back across the 1.x/2.x boundary. Verified that
+nothing else objects — every other constraint is a lower bound or a wide range:
+
+| Package | Constraint | OK at numpy 1.26 / sklearn 1.6 |
+|---|---|---|
+| scanpy 1.11.5 | `numpy>=1.24.1`, `scikit-learn>=1.1.3` | ✓ |
+| anndata 0.11.4 | `numpy>=1.23` | ✓ |
+| scipy 1.15.3 | `numpy>=1.23.5,<2.5` | ✓ |
+| numba 0.67.0 | `numpy>=1.22,<2.6` | ✓ |
+| celltypist | `scikit-learn>=0.24.1` | ✓ |
+
+1.26.4 is the newest release under TF's ceiling, so this is the resolver's best
+answer rather than a fallback. This is the re-freeze this plan always called for.
+
+### Data files
 
 The `.h5ad` files are git-ignored — at 167–272 MB each they exceed GitHub's
 100 MB file limit, so they must be obtained separately.
@@ -139,7 +203,7 @@ kernel.
 |---|---|---|---|
 | 1 | Load 4 `.h5ad` files from `layers['counts']`; add `obs['Sample']` per file | 0-3 | Tutorial loads raw CSV; we load the h5ad counts layer |
 | 2 | Doublet detection per sample, pre-merge | 4-22 (scVI/SOLO) | **Scrublet** (`sc.pp.scrublet`) instead |
-| 3 | QC: mito% (`MT-`), ribo% (KEGG_RIBOSOME — tutorial pulls from a live Broad URL; confirm reachable or substitute a static list), per-sample distribution inspection | 23-45 | Same method, but thresholds picked **per sample** from its own distribution, not one number reused everywhere |
+| 3 | QC: mito% (`MT-`), ribo% (KEGG_RIBOSOME — tutorial's Broad URL now 301-redirects to `gsea-msigdb.org` but resolves correctly when redirects are followed, which `pd.read_table` does by default; verified returning the gene list), per-sample distribution inspection | 23-45 | Same method, but thresholds picked **per sample** from its own distribution, not one number reused everywhere |
 | 4 | Concatenate the 4 samples after per-sample doublet+QC | 70-74 | Same concat pattern, no CSV loop needed |
 | 5 | Normalization: `normalize_total` + `log1p`, stored explicitly as `layers['normlog']` | 46-52, 88 | Tutorial uses `.raw`; `CLAUDE.md` requires keeping both `counts` and `normlog` layers |
 | 6 | HVG selection: `seurat_v3` flavor on raw counts, `batch_key='Sample'` | 91 (commented-out alt) | The tutorial's commented-out multi-batch line already matches `CLAUDE.md`'s preferred route — use it over the tutorial's dispersion-based default |
