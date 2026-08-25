@@ -202,7 +202,7 @@ kernel.
 | # | Section | Tutorial cells | Deviation from tutorial |
 |---|---|---|---|
 | 1 | Load 4 `.h5ad` files from `layers['counts']`; add `obs['Sample']` per file | 0-3 | Tutorial loads raw CSV; we load the h5ad counts layer |
-| 2 | Doublet detection per sample, pre-merge | 4-22 (scVI/SOLO) | **Scrublet** (`sc.pp.scrublet`) instead |
+| 2 | Doublet detection per sample, pre-merge | 4-22 (scVI/SOLO) | **Scrublet** (`sc.pp.scrublet`) instead. Its automatic threshold is unusable here — see "Section 2 outcome" below — so we threshold at fixed detection sensitivity |
 | 3 | QC: mito% (`MT-`), ribo% (KEGG_RIBOSOME — tutorial's Broad URL now 301-redirects to `gsea-msigdb.org` but resolves correctly when redirects are followed, which `pd.read_table` does by default; verified returning the gene list), per-sample distribution inspection | 23-45 | Same method, but thresholds picked **per sample** from its own distribution, not one number reused everywhere |
 | 4 | Concatenate the 4 samples after per-sample doublet+QC | 70-74 | Same concat pattern, no CSV loop needed |
 | 5 | Normalization: `normalize_total` + `log1p`, stored explicitly as `layers['normlog']` | 46-52, 88 | Tutorial uses `.raw`; `CLAUDE.md` requires keeping both `counts` and `normlog` layers |
@@ -257,6 +257,72 @@ The van den Brink dissociation-stress signature (the other half of `CLAUDE.md`'s
 bonus #6) stays deferred — `CLAUDE.md` ties it to the mito%/complexity QC rework,
 which needs a completed Task 3 first.
 
+## Progress
+
+Notebook is `nanoplastics_pipeline.ipynb`, kernel `nanoplastics-scrnaseq`.
+Work happens on branch `windows-env-setup` (not yet merged to `main`).
+
+| Section | Task | Status |
+|---|---|---|
+| Environment | — | done (Python 3.12.10, `.venv`, kernel registered) |
+| 1 — load 4 samples | 1 | **done, verified** |
+| 2 — doublet detection | 1 | **done, verified** |
+| 3 — QC metrics + filtering | 1 | **next** |
+| 4-16 | 1-6 | not started |
+
+Cells: 34,078 loaded → **31,839** after doublet removal.
+
+### Section 1 outcome
+
+Loaded from `layers['counts']`; Seurat's `X`, `obsm`, `varm`, `uns` and clustering
+discarded. `obs` reduced to `predicted.celltype` + `predicted.celltype.score` (kept as
+the Section 11b benchmark) plus our `Sample` label. Barcodes prefixed per sample
+(`40nm_AAACCC...`) because all four files reuse the `-1` suffix and would collide on
+concat. Counts downcast to `float32` — lossless, as `float32` is exact for integers
+below 2²⁴ and the largest count is 14,292.
+
+**Open issue for Section 4:** the four files have **different gene sets** (22,613 /
+23,206 / 21,715 / 21,961), because each was gene-filtered independently upstream.
+`sc.concat` defaults to `join='inner'`, keeping only genes present in all four. That is
+the correct choice — `join='outer'` would fill absent genes with **zeros**, asserting
+"not expressed" where the truth is "filtered out", and would fabricate large DE hits in
+exactly the size comparison Task 6 depends on. Still to do at Section 4: measure how
+many genes survive the intersection, and check no biologically load-bearing gene
+(`TNF`, `IL6`, `CXCL8`) is lost.
+
+### Section 2 outcome
+
+Scrublet's automatic threshold **failed** on this data. It assumes a bimodal score
+distribution; ours is unimodal, because only *heterotypic* doublets are detectable
+(two same-type cells fused look like one brighter cell of that type). So
+`threshold_minimum` drifted into the simulated-doublet tail: on `40nm` it chose 0.705
+against a maximum observed score of 0.637, calling **zero** cells, and across samples it
+ranged 0.22–0.70.
+
+**Rule adopted:** threshold at fixed detection sensitivity. The simulated doublets are
+known positives, so the fraction of them above a cutoff *is* that cutoff's sensitivity;
+taking the median simulated score pins it near 50% in every sample.
+
+A shoulder-based rule (local minimum of the observed density) was tried and **rejected**:
+`doublet_score` is a fraction of k neighbours and therefore discrete, so the "shoulder"
+tracks how many cells populate the discrete values — giving the largest sample the
+weakest detection (42.7% vs 49.4%). That bias would distort the very Task 4 composition
+comparison it is meant to protect.
+
+Removed **2,239 of 34,078 cells (6.6%)**: 618 / 898 / 358 / 365.
+
+**Finding to revisit in Section 12:** sensitivity-corrected doublet burden is a flat
+~11–14% across all four samples, rather than scaling with cell count as the 10x loading
+model predicts (4.9%–10.1%). Most likely the channels were loaded comparably and differ
+in *recovery*. Treat ~11–14% as an upper bound — simulated doublets are cleaner than
+real ones, which inflates measured sensitivity. Once cell-type labels exist, test
+directly by computing each sample's homotypic fraction (Σpᵢ² over cell-type
+proportions) and checking whether any sample is unusually skewed.
+
+**Dependency worth knowing:** `sc.pp.scrublet` needs `scikit-image`, which is *not* a
+hard scanpy dependency. Without it scanpy imports fine and the call fails at runtime.
+Now pinned in `requirements.txt`.
+
 ## Working process
 
 Per section: read the corresponding tutorial cells first (what it does and why),
@@ -264,6 +330,27 @@ then write the adapted version in the notebook, discussing parameter choices as
 we go. Every threshold and parameter gets a markdown justification — the rubric
 explicitly asks for it. Work incrementally, one section at a time, verifying
 output before moving on.
+
+Concretely, for each section: **explain what we are about to do and why → write it →
+run it → show the real output against what was expected → stop for review.** One
+section at a time, never several batched together. Where a choice has more than one
+defensible answer — QC thresholds above all — surface the tradeoff and let the user
+decide rather than picking silently.
+
+"Section" always means a row of the table below (1–16); "Task" always means an entry in
+`CLAUDE.md`'s task list (1–6). Do not introduce a third numbering scheme.
+
+Verifying a section means executing the notebook, not eyeballing the code. A cell that
+runs without error proves nothing about whether it did anything — Section 2's first
+attempt filtered zero cells while completing successfully. Run it with:
+
+```bash
+.venv/Scripts/python -m jupyter nbconvert --to notebook --execute \
+  nanoplastics_pipeline.ipynb --output-dir <scratch> --output check.ipynb \
+  --ExecutePreprocessor.timeout=5400
+```
+
+Sections 1–2 take ~10 minutes end to end, almost entirely Scrublet.
 
 ## Verification checklist
 
