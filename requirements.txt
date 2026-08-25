@@ -34,6 +34,12 @@ h5py==3.16.0
 leidenalg==0.12.0          # Leiden clustering (CLAUDE.md prefers it over Louvain)
 python-igraph==1.0.0       # leidenalg's graph backend
 
+# Required by sc.pp.scrublet (Section 2), but NOT a hard scanpy dependency. Scrublet's
+# automatic threshold detection calls skimage.filters.threshold_minimum, so without
+# this the call imports fine and then fails at runtime with
+# "threshold is None and thus scrublet requires skimage".
+scikit-image
+
 # --- scientific base ---------------------------------------------------------
 scipy==1.15.3
 pandas==2.3.3
