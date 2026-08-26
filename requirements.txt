@@ -40,6 +40,13 @@ python-igraph==1.0.0       # leidenalg's graph backend
 # "threshold is None and thus scrublet requires skimage".
 scikit-image
 
+# Required by sc.pp.highly_variable_genes(flavor='seurat_v3') in Section 6, which is
+# CLAUDE.md's specified HVG route. Same failure shape as scikit-image above: not a hard
+# scanpy dependency, so scanpy imports fine and the call dies at runtime asking for
+# skmisc.loess. Ships a cp312 wheel for Windows and Linux; needs numpy>=1.26.4, which
+# is exactly the version TensorFlow's ceiling pins us to.
+scikit-misc
+
 # --- scientific base ---------------------------------------------------------
 scipy==1.15.3
 pandas==2.3.3
