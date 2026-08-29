@@ -53,6 +53,211 @@ Observations produced by the pipeline itself that are **not yet explained**, and
 later sections must test rather than assume. Kept here, near the top, so they are not
 buried in the per-section outcome notes where they were first recorded.
 
+### Task 4 result — monocytes are the only size-dependent composition shift
+
+Section 12, on the outer join at resolution 0.3. Two measures, because proportions are closed
+and neither measure is neutral: percentage points favour abundant types, CLR favours rare ones.
+**Trust rows that survive both.**
+
+| | 40nm | 200nm | mixture |
+|---|---|---|---|
+| Monocyte, percentage points | **-1.93** | **+3.46** | -0.16 |
+| Monocyte, CLR | **-0.48** | **+0.44** | -0.17 |
+
+Monocytes fall with 40nm particles, rise with 200nm (4.95% -> 8.41%, a 70% relative increase),
+and are unchanged with both together. It clears the within-sample sampling floor in the two
+single-size samples and not in the mixture.
+
+**Why this row and not the others.** It is the only row whose two single-size exposures move in
+**opposite directions**, and closure cannot produce that — a row inflated purely by other rows
+shrinking moves the same way whenever composition shifts. The depth confound also runs against
+it: 200nm is the shallowest sample and monocytes are RNA-rich, so capture bias would push this
+result the other way.
+
+**Weaker observations.** `CD4 T naive` falls in all three exposures (the only row consistent
+across every exposure, but small in CLR). `B memory` falls in both single-size samples, not the
+mixture. `Basophil` rises in all three with the largest CLR values in the table - on **15
+control cells**, so an observation only, and already excluded from Section 13's DE.
+
+**Two things that look like findings and are not.** `CD8 T naive` shows the largest raw changes
+(+7.30 / +3.28 pp) but collapses to +0.06 CLR at 200nm: it is the arithmetic shadow of the
+monocyte column growing, and it is also the row most exposed to the depth confound, since naive
+T cells are RNA-poor. Everything else sits inside the sampling floor.
+
+**The limitation that governs all of it:** one sample per condition. Nothing here separates
+exposure from donor or channel. These are **described differences, not attributed effects**,
+and that qualification travels with every number above.
+
+**Open question for Task 6:** the mixture contains both particle sizes and shows neither
+component's monocyte effect. An additive model does not predict that.
+
+### Ambient RNA contaminates every non-myeloid cell type, and it cannot be corrected here
+
+Found in Section 13, after the pseudobulk fold changes put a myeloid inflammatory program at
+the top of *every* cell type's list. It is contamination, and the per-cell evidence is
+unambiguous:
+
+| `IL8` | mean copies among expressing cells | share of those carrying only 1-2 copies |
+|---|---|---|
+| **Monocyte** | **573.8** | **0.01** |
+| B / CD4 T / CD8 T / CD8 T naive / MAIT / NK / Treg | 1.9 - 4.7 | **0.74 - 0.78** |
+
+Monocytes carry a median of 478 copies per cell; lymphocytes carry 2, and three quarters of
+the lymphocytes carrying any carry one or two. That is a Poisson sprinkle of an abundant
+transcript across every droplet - free mRNA from lysed cells, captured beside whatever cell the
+droplet held.
+
+**Pseudobulk is structurally blind to it.** 3,000 lymphocytes at 2 copies each sums to 6,000,
+indistinguishable in a pseudobulk column from 50 cells at 120 copies each. The step that solved
+pseudoreplication destroyed the per-cell evidence separating soup from signal, which is why this
+surfaced at Section 13 and not earlier.
+
+**It dominates the rankings worst where the biology is quietest.** Myeloid inflammatory genes
+take **15 of the top 30** upregulated genes in CD4 T at 200nm, 16 of 30 in CD8 T naive, 13 in
+Treg - against **8 of 30 in the monocytes that produced them**. In a monocyte the same soup is a
+rounding error beside 500 real copies and competes with a genuine multi-gene response; in a
+lymphocyte there is nothing else, so the soup *is* the top of the list.
+
+**No threshold separates it.** Three criteria were tried and each failed for a different reason:
+counts among expressing cells is confounded with sequencing depth (it drops `ACTB` from CD8 T,
+which are shallower); expression relative to the lowest-expressing cell type removes uniformly
+expressed genes such as `B2M` by construction; and the two combined still miss `IL8` itself,
+because a gene abundant enough to dominate the soup clears any threshold low enough to keep real
+genes.
+
+**Why it is unfixable on this data.** SoupX and CellBender do not infer the soup - they
+**measure** it from the empty droplets in CellRanger's *raw* matrix. Our files are
+`filtered_feature_bc_matrix`, CellRanger's filtered output, so the empty droplets were discarded
+before the data reached us. The measurement cannot be reconstructed from the cells that
+survived filtering. **For any future project of this shape, request the raw matrices at the
+start.**
+
+**What this constrains, precisely.** Pathway-level inflammatory enrichment must not be reported
+for any lymphocyte population: a myeloid *program* appearing across seven unrelated cell types
+at once, in monocyte proportions, including genes lymphocytes have no route to expressing
+(`MMP1`, a matrix metalloproteinase; `CSF3`, G-CSF), is contamination - coherence identifies it,
+not magnitude. It does **not** license calling any individual gene in any individual cell an
+artefact: about 16 lymphocytes carry double-digit `IL8` at normal depth with no myeloid markers,
+and T cells are documented to produce IL-8 in some subsets. The monocyte result is unaffected.
+
+Section 13 therefore reports the diagnostic (`mean_nz`, `frac_le2`) beside every fold change
+rather than filtering, so each gene can be judged on evidence instead of on a threshold that
+does not exist.
+
+### Task 5 result — the inflammatory response is monocyte-specific, and only monocytes
+
+Section 14, preranked GSEA on Section 13's fold changes, Enrichr `KEGG_2021_Human`, 8 cell
+types x 3 contrasts.
+
+**Monocytes, clean on the ambient diagnostic:**
+
+| pathway | contrast | NES | FDR | ambient_frac |
+|---|---|---|---|---|
+| IL-17 signaling | 40nm | **+2.69** | **0.000** | **0.00** |
+| IL-17 signaling | mixture | +2.39 | 0.000 | 0.06 |
+| IL-17 signaling | 200nm | +2.30 | 0.000 | 0.05 |
+| TNF signaling | 40nm | +2.34 | 0.000 | 0.10 |
+| TNF signaling | mixture | +2.25 | 0.000 | 0.15 |
+
+`TNF signaling` is the pathway `CLAUDE.md` named in advance as a candidate. `IL-17 signaling`
+is essentially uncontaminated in all three exposures.
+
+**Clean pathways by cell type** (FDR < 0.25, `ambient_frac` <= 0.5):
+
+| | 200nm | 40nm | mixture |
+|---|---|---|---|
+| Monocyte | 42 | 59 | 58 |
+| B | 10 | 13 | 8 |
+| CD4 T, CD8 T, CD8 T naive, MAIT, NK, Treg | **0** | **0** | **0** |
+
+**899 significant pathways across the six lymphocyte types, none of them clean.** Every one is
+ambient-driven. This is `CLAUDE.md`'s prediction - effects concentrated in phagocytic myeloid
+cells, not lymphocytes - confirmed by measurement rather than by absence of evidence.
+
+B cells pass the filter but not convincingly: their clean pathways sit at `ambient_frac`
+0.38-0.47, against the 0.5 cutoff, where monocytes sit at 0.00-0.15. Direction there is `B cell
+receptor signaling` **down** at 40nm and mixture.
+
+### Composition and expression dissociate, in two places
+
+| | monocyte proportion (Sec 12) | monocyte IL-17 response (Sec 14) |
+|---|---|---|
+| 40nm | **-1.93 pp** | **NES +2.69** (strongest) |
+| 200nm | **+3.46 pp** | NES +2.30 |
+| mixture | -0.16 (flat) | NES +2.39 |
+
+**The expression response is uniform across all three exposures; the composition response is
+not.** 40nm has fewer monocytes that are more activated; 200nm has more monocytes, also
+activated; the mixture has unchanged numbers and a full response.
+
+So the answer to Task 6's shared-versus-size-specific question **depends on which readout is
+asked**: composition is size-specific (down at 40nm, up at 200nm, flat in the mixture), while
+activation is shared across all three. This is exactly why `CLAUDE.md` requires Tasks 4 and 5
+not be conflated, and it is the strongest structural finding in the analysis.
+
+**The mixture also breaks the depth confound.** It is the deepest exposed sample (6,373 median
+counts against 200nm's 4,440), so if sequencing depth drove the monocyte signal the mixture
+should be weakest. It is not - NES +2.39 against 200nm's +2.30. That is the one monocyte
+contrast where the confound can be ruled out rather than merely stated.
+
+### Gene-set construction is a parameter, not a lookup
+
+Recorded because it changed a headline. The same ranking, run against MSigDB's **KEGG MEDICUS**
+(which replaced the retired `c2.cp.kegg` collection), gave a best monocyte result of q = 0.01.
+Run against Enrichr's **`KEGG_2021_Human`** it gives q = 0.000.
+
+MEDICUS fragments the inflammatory program into 4-gene disease-framed modules
+(`PATHOGEN_HCMV_US28_TO_GNB_G_PI3K_NFKB_SIGNALING_PATHWAY`); small sets give unstable
+enrichment scores. `KEGG_2021_Human`'s `IL-17 signaling pathway` holds 94 genes and produces a
+far more stable score from identical input.
+
+MEDICUS is also badly redundant: six "different" B-cell pathways at q < 0.01 proved to be one
+87-gene set with **98% median pairwise overlap**. The initial reading of that was inflation -
+six names for one finding. The larger cost was the opposite: **fragmenting one real program
+into pieces too small to reach significance individually.**
+
+**Cost of the switch:** Enrichr serves undated copies, so the library cannot be pinned to a
+release the way an MSigDB GMT can. The access date is printed instead. Also worth recording:
+`gseapy.get_library()` fails on this machine with an SSL certificate error (it uses `requests`
+and certifi's bundle; the chain resolves only through the OS store), so the library is fetched
+with `urllib` and passed to `prerank` as a dict.
+
+### A third artefact: sequencing depth in the pathway rankings
+
+Distinct from ambient RNA, and neither diagnostic finds the other.
+
+Run with all genes, CD4 T's top hit was `TRANSLATION_INITIATION` at NES 2.13, FDR 0.005 - and
+it **passed the ambient check cleanly** (`frac_le2` 0.03). Two things were wrong: the set is 78
+of 80 ribosomal proteins and zero initiation factors, and ribosomal share tracks sequencing
+depth, which is confounded with exposure:
+
+| ribosomal % of pseudobulk | control | mixture | 40nm | 200nm |
+|---|---|---|---|---|
+| median depth | 7,852 | 6,373 | 5,477 | 4,440 |
+| CD4 T | 29.0 | 30.1 | 34.4 | 34.5 |
+| CD8 T naive | 30.9 | 32.4 | 38.4 | 38.6 |
+
+The depth ordering, reversed. In a shallower sample low-expression genes drop out entirely and
+the highest expressors take a larger share of what remains; size-factor normalisation does not
+undo a change in composition.
+
+**Response:** ribosomal and mitochondrial genes are dropped from the ranking handed to GSEA -
+not from the data, and not from Section 13's fold changes. Narrower than Section 3's decision,
+which declined to filter *cells* on ribo%.
+
+**Not a fix.** The artefact is compositional: remove the ribosomal block and the next tier of
+high expressors inherits the behaviour. Watch any pathway whose leading edge is dominated by
+highly expressed genes.
+
+**And a false alarm worth recording, because the wrong test looked convincing.** B-cell
+oxidative phosphorylation was suspected of being the same artefact - its raw share falls with
+depth in all eight cell types. But raw share mixes the depth effect with the biology. Against
+each cell type's *own* typical gene, OXPHOS is **+0.371 in B cells (80th percentile) and -0.306
+in monocytes (37th)**. A depth artefact moves every cell type the same way; a direction reversal
+is biology. The three artefacts in this analysis each needed a different comparison - ambient
+needed per-cell distributions, the ribosomal artefact needed across-sample shares, and this one
+needed within-cell-type relative fold change.
+
 ### 200nm is the least similar sample to control — the first size-dependent signal
 
 Before correcting anything, scanorama (Section 8) scores how much genuine population
@@ -220,6 +425,106 @@ PCA/UMAP, and `seurat_clusters` entirely. Treat the files as if they were a plai
 counts matrix. This is the point of Tasks 1-2 and of the exercise: our own QC
 threshold choices, normalization, HVG selection, batch correction, and clustering.
 
+### Concatenation join (Section 4) — outer, changed from inner
+
+The four files carry different gene sets (22,613 / 23,206 / 21,715 / 21,961) because each was
+gene-filtered independently upstream at what is evidently `min.cells=3` — among the genes that
+differ, the lowest detection anywhere is exactly 3 cells. **A gene "absent" from a sample was
+therefore seen in at most 2 of its cells.** It is a near-zero measurement, not missing data.
+
+That bounds the error each join makes, and the bound decides it:
+
+- **outer**'s zero-fill misstates at most 2 cells per sample, always toward zero — it can
+  understate a difference, never manufacture one.
+- **inner** deletes the gene from all four samples, so it can never be tested at all.
+
+The earlier rationale here argued outer "invents" a fold change. It does not: the invented
+quantity is bounded by 2 cells out of several thousand, while inner's loss is total.
+
+**Measured cost of the inner join:** 3,992 genes dropped (16.4% of the union). 2,419 of those
+are absent from control but present in an exposed sample, and 288 are detected in 10+ cells.
+The most-detected is `PTGES` (66 cells), prostaglandin E synthase — an NF-κB-driven
+inflammation gene of exactly the kind Tasks 5-6 exist to find. **Switching to outer nets
++1,475 genes after `min_cells=10`: 20,387 → 21,862.**
+
+`min_cells=10` on the merged object is the right place to make this call — one explicit
+threshold applied to all four samples at once, stated in the notebook. The inner join was
+making the same call implicitly, with a rule inherited from whoever preprocessed the files.
+
+### Clustering resolution (Section 9) — 0.3, changed from 0.4
+
+The outer join changed the stability sweep, and the change reversed the choice:
+
+| resolution | clusters | stability (inner) | stability (outer) |
+|---|---|---|---|
+| 0.2 | 11 | 0.892 | 0.834 |
+| 0.3 | 15 | **0.798** | 0.834 |
+| 0.4 | 18 | 0.863 | **0.758** |
+
+0.4's original justification was that its gap to 0.2 was within the method's own noise, since
+0.3 dipped below both neighbours. **Under the outer join that dip is gone** — 0.2 and 0.3 tie
+at 0.834 and 0.4 sits clearly below both. Read cold, nobody picks 0.4 from this table.
+
+Keeping it would have meant defending a parameter with knowledge from the run being replaced.
+Checked instead of assumed: at 0.3 the **only** population that merges away is the CD8
+effector / effector-memory split. MAIT, Treg, Basophil, both B subsets and both monocyte
+groups all stay separate. That split is also the annotation's most contested call (Section
+11b: 911 of 1,789 cells disputed by both external schemes), and `COARSE` merges it into
+`CD8 T` before Section 13 tests anything — so it costs nothing downstream.
+
+**What stability cannot do:** it falls as resolution rises simply because more clusters mean
+more boundaries to disagree about — 0.1 scores highest at 0.945 on 9 clusters, far too few for
+PBMCs. It rules out unstable regions; it cannot pick a resolution on its own. The other half
+of the criterion is whether the clustering resolves the populations Task 3 requires, and that
+requirement comes from the project spec, not from a previous run.
+
+### Cluster renumbering — what caught it
+
+The outer join reordered every Leiden cluster while leaving the cluster *count* unchanged, so
+the first assert in the map cell (count matches) passed and the hand-written `CELL_TYPES` was
+silently wrong — the cluster it called `NK` was holding the monocytes. **The `CD14`-highest-in-
+Monocyte sentinel in that cell is what caught it**, and without it every monocyte in Sections
+12-16 would have been labelled NK.
+
+Rule this establishes: any change upstream of Section 9 invalidates `CELL_TYPES`, and the map
+must be re-derived rather than renumbered. Cross-tabulating the new clustering against a
+preserved earlier labelling makes that a confirmation rather than a from-scratch job, which is
+why `results/annotated_innerjoin.h5ad` is kept.
+
+### Differential expression (Section 13) - pseudobulk, fold changes only, no p-values
+
+The task list names no method for Task 5; `CLAUDE.md`'s DESeq2 instruction is accumulated
+reasoning in its decisions section, not the project description. So the method was argued from
+scratch.
+
+**Pseudobulk is kept**, on its own merits rather than on that instruction: per-cell testing
+treats 29,157 cells as independent observations of an exposure when they are four channels from
+one donor, and returns p-values that answer "did we sequence a lot of cells?"
+
+**Pseudobulk then collapses the design to n = 1 per condition**, and no method recovers a
+p-value from that:
+
+- `pydeseq2` per cell type **refuses outright** - *"there are no replicates to estimate the
+  dispersion"*. Correct behaviour, and it is what ruled the original plan out.
+- A pooled interaction design (`~ Sample + inC + Sample:inC`, 24 residual df) *is* estimable,
+  but the replication it borrows is **between cell types**, not between donors, so its p-values
+  answer a different question.
+- Splitting cells into pseudo-replicates manufactures replication and re-introduces exactly the
+  pseudoreplication pseudobulk exists to avoid.
+- A fixed literature dispersion (edgeR's no-replicate workaround) states its assumption honestly
+  but still assumes the quantity that matters.
+
+**Decision: report effect sizes only.** Median-of-ratios size factors, then
+`log2((exposed + k) / (control + k))` with `k` swept rather than asserted. A `padj` column would
+be a number requiring permanent disclaimer - and the disclaimer lives in a markdown cell while
+the column travels into tables and figures alone. Section 14's GSEA consumes a ranked list and
+needs no significance threshold.
+
+**One reporting trap found and fixed:** counting genes with `|log2FC| > 1` per cell type
+correlates with cell count at about **-0.86** (fewer cells, noisier pseudobulk, more spurious
+large ratios). That table is printed with its cell counts beside it and marked not comparable
+across rows.
+
 ### Batch correction — scanorama
 `CLAUDE.md` requires picking and justifying one method. We use **scanorama**
 rather than `mnnpy`: `mnnpy` is unmaintained, and a dry-run install only proves
@@ -259,6 +564,18 @@ external ones as verification.
   Its cost is environment debugging (Ubuntu ships R 4.1.2; Seurat compiles ~100
   dependencies; the h5ad↔Seurat conversion via SeuratDisk is the usual stall
   point) rather than anything that teaches us scRNA-seq.
+
+**Task 3 scope — settled, not open.** Asked directly whether "Azimuth PBMC reference" in the
+task list requires running that reference ourselves: **it does not.** The deliverable is
+`panhumanpy` + `celltypist` run by us, compared against the labels inherited with the `.h5ad`
+files. So the pan-human/PBMC-specific gap is an **accepted scope decision** to state in the
+report, not an unresolved shortfall — and the R/Seurat escalation above stays unexercised
+unless something else forces it.
+
+**There is no project description beyond `CLAUDE.md`'s task list.** Confirmed directly. Its
+six lines are the whole spec — there is no rubric, point weighting, or fuller assignment
+document to defer to. Where the task list is silent, the call is ours and belongs in this file
+with its reasoning, rather than being resolved by guessing at unstated requirements.
 
 ### scVI avoided throughout
 Scrublet (`sc.pp.scrublet`, built into scanpy) instead of scVI/SOLO for doublets;
@@ -439,20 +756,75 @@ Work happens on branch `windows-env-setup` (not yet merged to `main`).
 | 6 — HVG selection | 2 | **done, verified** |
 | 7 — scale + PCA | 2 | **done, verified** |
 | 8 — batch correction (scanorama) | 2 | **done, verified** |
-| 9 — neighbours, UMAP, Leiden | 2 | **done, verified** |
-| 10 — marker genes + cluster annotation | 3 | **stage 1 done**; stage 2 (the cluster→cell-type map) next |
-| 11-16 | 3-6 | not started |
+| 9 — neighbours, UMAP, Leiden | 2 | **done, verified** (`RESOLUTION = 0.3`, 15 clusters) |
+| 10 — marker genes + cluster annotation | 3 | **done, verified**; prose rewritten for the new numbering |
+| 11 — automated annotation (CellTypist + panhumanpy) | 3 | **done, verified** |
+| 11b — verification vs. inherited labels | 3 | **done**; new `EXTERNAL_TO_COMMON` assert not yet exercised |
+| 12 — composition (Task 4) | 4 | **done**; effect measure implemented, cell not yet re-run |
+| 13 - pseudobulk DE (Task 5) | 5 | **written**, cells not yet run |
+| 14 - pathway enrichment (Task 5) | 5 | **written**, cells not yet run |
+| 15 - size-specific effects (Task 6) | 6 | not started |
+
+**Sections 4-12 have been walked through cell by cell** and their prose corrected against the
+outer-join / resolution-0.3 run. The recurring defect was a number hardcoded into markdown
+that the code recomputes correctly — the code was right throughout. Two exceptions worth
+naming, because they are different failure classes:
+
+- **Section 11's CellTypist markdown described an action the code no longer takes**, and
+  argued for the opposite conclusion to the one now recorded (per-cell reassignment of the
+  naive T cluster to CD4). Stale *numbers* are visible by comparing against output; a removed
+  *action* leaves no trace in output at all. It was caught by reading adjacent cells in order,
+  not by checking figures.
+- **`PLAN.md` cited an agreement figure ("excluding NK, 93.2%") that no cell computes.** It was
+  removed rather than given code, because the by-label disagreement table already shows what
+  it was for, and an "agreement excluding X" headline invites the coarsening it hides:
+  agreement rises monotonically as categories are dropped.
 
 Cells: 34,078 loaded → **31,839** after doublet removal → **29,157** after QC (8.4%
-removed, spread 1.6 pp across samples).
-Genes: 24,380 union → **20,388** after the inner join → **20,387** after `min_cells=10`.
+removed, spread 1.6 pp across samples). **Unchanged by the join**, as expected.
+Genes: 24,380 union → **21,862** after `min_cells=10` on the outer join
+(was 20,388 → 20,387 under the inner join).
 
-Sections 1-7 have been run **top-to-bottom on a restarted kernel** with no errors,
-satisfying the end-to-end requirement in the verification checklist (Sections 1-5 at
-execution counts 1-24; Sections 6-7 at 25-30; Section 8 at 31-34; Section 9 at 35-40).
+Preserved for before/after comparison, both git-ignored:
+`results/annotated_innerjoin.h5ad` (the full inner-join object, all labels) and
+`results/executed_innerjoin.ipynb` (every printed output of that run).
+
+Sections 1-7 have been run **top-to-bottom on a restarted kernel** with no errors
+(Sections 1-5 at execution counts 1-24; Sections 6-7 at 25-30; Section 8 at 31-34;
+Section 9 at 35-40).
+
+**That claim did not extend to Section 9, and the gap was real.** A cold
+`nbconvert --execute` on 2026-08-29 failed there with
+`NameError: name 'RESOLUTION' is not defined`. Cell 57 defines `RESOLUTIONS` — plural, the
+sweep list — while the cell running the final clustering read `RESOLUTION`, singular, which
+**nothing in the notebook ever assigned**. It had been living in the interactive kernel's
+memory, left behind by a cell since edited or deleted, so every interactive run succeeded
+while the notebook was never actually reproducible. Fixed by adding `RESOLUTION = 0.4` beside
+the `sc.tl.leiden` call — the value that cell's own comment already justifies.
+
+This generalises past the one name: **a section can be recorded here as verified on the
+strength of output a cold kernel cannot reproduce.** It is also the likely explanation for
+interactive runs completing much faster than cold ones — a warm kernel is skipping work, not
+running it faster.
+
+**With that fix, Sections 1-11 now pass a cold run end to end** (~23 min, 2026-08-29),
+reproducing every number recorded above exactly: 29,157 cells, 20,387 genes, 18 Leiden
+clusters at resolution 0.4, 94.0% Azimuth-vs-CoDi, 88.1% / 87.9% against the inherited labels
+and `CoDi`, 45.7% CellTypist-vs-panhumanpy on cluster 3, and the same 8 testable coarse groups.
+Identical reproduction was not a given — Leiden numbering is not stable across runs, so a
+re-ordered clustering would have invalidated `CELL_TYPES` silently; the `CD14`-highest-in-
+Monocyte assert in that cell is what would have caught it, and it passed.
 A write-only checkpoint is saved at `results/combined_after_qc.h5ad` (~1 GB, git-ignored).
 Nothing auto-loads it — a checkpoint that reloads itself is the same bug as a stale
 output. Restore by hand with `sc.read_h5ad` if a kernel dies.
+
+A **second** write-only checkpoint is saved at `results/annotated.h5ad` by a new cell at the
+end of Section 11b. It exists because the first one is not enough: it predates clustering and
+annotation, so `obs['leiden']` and `obs['cell_type']` live nowhere on disk without it, and
+Sections 12-16 all group by `cell_type`. A dead kernel therefore used to cost a full re-run of
+Sections 5-11 — scanorama's sigma sweep, Leiden's resolution sweep and both annotation models
+included. This was discovered the hard way when a jupyter-lab restart discarded the session
+that produced the Section 11b results recorded above.
 
 ### Section 1 outcome
 
@@ -1062,18 +1434,25 @@ coarsest vocabulary all schemes can express, the mapping written out in the cell
 
 | | agreement |
 |---|---|
-| inherited `predicted.celltype` | **88.1%** of 29,157 cells |
-| `CoDi` | **87.9%** |
-| **excluding the NK category** | **93.2%** |
+| inherited `predicted.celltype` | **88.8%** of 29,157 cells |
+| `CoDi` | **88.7%** |
 
-**The disagreements are concentrated, not diffuse**, which is the result that matters:
+**The disagreements are concentrated, not diffuse**, which is the result that matters. The
+by-label table below is the evidence for that, and it is preferred to any single
+"agreement excluding X" headline: agreement rises monotonically as categories are dropped, so
+such a number reads as more reassuring than it is.
 
 | our label | disputed | why |
 |---|---|---|
-| `NK` | 1,583 of 1,589 | their schemes call NK "Cytotoxic T"; `CD3E` is in 5% of these cells |
-| `CD8 T effector memory` | 911 of 1,789 | split ~50/50 by them - the function axis; CellTypist (67% `Tem/Trm cytotoxic`) and Azimuth (41% `GZMK CD8 T`) both back our call |
-| `Doublet` + `Basophil` | 393 | categories they do not have |
-| everything else | ~580 of 25,000 | Treg 2, CD4 naive 1, T naive 1 |
+| `NK` | **1,624 of 1,630** | their schemes call NK "Cytotoxic T"; `CD3E` is in 7% of these cells |
+| `CD8 T effector` | 942 of 5,610 | the function axis - they split cytotoxic from CD4, we split by lineage |
+| `Basophil` + `Doublet` | 205 | categories they do not have |
+| `B memory` + `B naive` | 192 | minority disagreement inside clusters both schemes otherwise agree on |
+| everything else | 292 | MAIT 113, CD4 T memory 96, Monocyte 80, Treg 2, CD4 T naive 1 |
+
+`CD8 T naive` contributes essentially no disagreement, because it maps to `other T` on our
+side and they call it `CD4+ T cell`, which maps there too - the relabel changed what we call
+those cells, not which external category they fall in.
 
 Diffuse disagreement would mean something systematic was wrong. Concentrated disagreement in
 categories the references demonstrably lack is the expected shape.
@@ -1106,6 +1485,46 @@ this project exists to find.
 pseudobulk column reflects which cells happened to be captured more than the sample's biology.
 Stated in Section 10 so Section 13 inherits an explicit list rather than discovering the problem
 as a failed model fit.
+
+## Additional analyses — candidates outside the project description
+
+The task list has six entries and nothing else. Anything below is an **addition**, to be
+chosen from rather than all implemented; the working target is 3-5. Kept here so the core
+pipeline stays exactly aligned to the six tasks and additions are a deliberate choice rather
+than scope drift.
+
+Inherited from `CLAUDE.md`'s bonus list:
+
+1. **Mito%/complexity joint QC rework**, plus per-cell-type mito% as an exposure readout.
+   Needs Task 3 done, and supersedes the first-pass QC once done.
+2. **Leiden vs. Louvain robustness comparison.**
+3. **scVI native DE module** - not applicable, scVI was avoided throughout.
+4. **Marker-gene retention / downsampled-reference accuracy check** on annotation quality.
+5. **scANVI vs. Azimuth annotation comparison.**
+6. **van den Brink dissociation-stress signature scoring** - tests whether high-mito% cells
+   also score high on heat-shock/immediate-early genes, which is what actually resolves
+   item 1 (technical artefact vs. real biology).
+
+Added during the build:
+
+7. **MSigDB Hallmark GSEA** (Section 14) and **per-cell Hallmark scoring** (Section 16).
+   These are one candidate, not two, and the reason is the pairing: Section 14's GSEA
+   collapses every cell in a group to a single ranked list before testing, while
+   `sc.tl.score_genes` gives every cell its own value. Run on **the same gene set** they
+   answer different questions - a bimodal per-cell score inside monocytes would be direct
+   evidence of uptake-dependent response, which no pseudobulk method can show. Hallmark is
+   the right set for it: 50 curated non-redundant sets, and the best symbol match of the four
+   libraries (90.7% against GO:BP's 75.5%). Excluded from core because the task list names
+   GO/Reactome/KEGG and not Hallmark, and because Task 6's deliverable is Section 15.
+8. **Ambient RNA correction.** Not implementable on this data - SoupX and CellBender need
+   the empty droplets in CellRanger's raw matrix, and we have only the filtered output. Listed
+   so the gap is a recorded decision rather than an omission, and as the reason to request raw
+   matrices at the start of any future project of this shape.
+9. **Uncorrected-embedding clustering control.** Cluster on `X_pca_sel` (preserved by Section
+   8) and cross-tabulate against the corrected labels. Measured once during the build:
+   monocytes recover at 99.7% purity and NK at 99.2% without any batch correction, so the
+   headline result does not depend on scanorama. `Treg` and the B subsets do not separate
+   without it. Cheap, and it converts an assurance into a measurement.
 
 ## Working process
 
@@ -1166,7 +1585,15 @@ Sections 1–2 take ~10 minutes end to end, almost entirely Scrublet.
   type is unimodal or bimodal *before* summarizing with a mean — bimodality is a
   finding in itself, and a mean would hide it.
 - **End to end**: the notebook should run top-to-bottom without manual patching
-  once a section is finalized.
+  once a section is finalized — and the evidence has to be a **cold** run
+  (`nbconvert --execute` on a fresh kernel), never an interactive pass. An interactive
+  pass cannot prove this, because the thing it fails to catch is precisely what a warm
+  kernel supplies.
+- **Leaked kernel state**: a cell can work only because a long-lived session still holds
+  a variable whose defining cell was edited away. `RESOLUTION` was exactly this, and **no
+  runtime check in this list would have caught it** — the cell ran, produced correct
+  output, and was recorded above as verified. Reading the cell sources for names that are
+  never assigned, or assigned only later, catches it before a cold run does.
 
 ## Known limitations to state explicitly in the report
 
@@ -1176,26 +1603,48 @@ Sections 1–2 take ~10 minutes end to end, almost entirely Scrublet.
 - **First-pass QC is a working baseline.** Per `CLAUDE.md`, once Tasks 1-6 run
   end-to-end on standard QC, revisit with the mito%/complexity joint check before
   finalizing.
-- **The CD4/CD8 split cannot be resolved in this dataset, and cluster 3 is labelled
-  accordingly.** Cluster 3 (7,371 cells, 25%) is demonstrably a naive T *mixture* - `CD8B` in
-  51% of its cells against 3% in cluster 4, and `S100B` at 4-10% against 0.2% in CD4-detected
-  cells - but no method could say which cells are which. **CellTypist** called it 62/38
-  CD8/CD4 per cell; **Pan-Human Azimuth**, a different architecture on different training data,
-  called it 88% CD4; and the two agreed on which *individual* cells were CD4 only **45.7%** of
-  the time, against ~50% by chance. Two per-cell models uncorrelated above chance are not
-  resolving the distinction.
+- **Cluster 2 is naive CD8 T cells, at cluster level only — and this reverses an earlier
+  call.** The cluster (6,674 cells, 22.9%) was labelled `T naive (CD4/CD8 unresolved)` on the
+  grounds that two per-cell models could not agree. That reasoning weighed the models against
+  each other and ignored the genes, and the genes are not ambiguous:
 
-  A per-cell relabel based on CellTypist alone was made and then **reverted** when that test
-  failed - the criterion was stated before the test ran, which is the only reason the reversal
-  was not a judgement call after the fact. Cluster 3 carries one label,
-  `T naive (CD4/CD8 unresolved)`, and is its own coarse group so the cells stay testable in
-  Section 13 (control n = 1,268) without asserting a lineage. **The dataset's CD4:CD8 ratio
-  should not be reported as a number.** The reason it cannot be: 48% of naive-T-like cells
-  (4,017 of 8,368) express *neither* `CD4` nor `CD8A`/`CD8B`, so every method assigns them by
-  its own prior - ours to the cluster majority, which `CD8B` determines because it is the
-  detectable gene, and the reference labels to their majority class, CD4. Our pipeline did not
-  cause the skew: the inherited CD4:Cytotoxic ratio is 3.04 before our processing and 2.98
-  after.
+  | | `CD4` | `CD8B` |
+  |---|---|---|
+  | cluster 2 | **2.9%** | **54.8%** |
+  | populations we call CD4 (naive, memory, Treg) | 22-24% | 1.8-3.9% |
+  | CD8 T effector | 2.6% | 38.0% |
+
+  `CD4` captures poorly in 10x — it reaches only ~24% even where we are confident — so its
+  **absence** is weak evidence. `CD8B` captures normally, and its **presence** at 54.8%
+  against a 3.9% background is positive evidence. Note it exceeds the CD8 effector cluster's
+  38.0%, which is exactly what naive CD8 cells look like. `CCR7` 93.1% and `IL7R` 94.5% place
+  it firmly in the naive compartment.
+
+  **The two models failed differently, and that asymmetry is the finding.** CellTypist called
+  it 67% `Tcm/Naive cytotoxic T`; Pan-Human Azimuth called it 87.5% `Naive CD4 T`. On every
+  cluster where the genes give an independent answer — MAIT, Treg, Basophil, NK — CellTypist is
+  right and `panhumanpy` is weaker or wrong: it labels our CD4 **memory** cluster `Naive CD4 T`
+  at 70%, and returns `False` on MAIT and Basophil entirely. Its errors run consistently toward
+  CD4, the same direction as the inherited labels — a shared prior rather than a second
+  independent measurement. So the 42.1% agreement between the two models is not "two good
+  methods disagree, truth unknowable"; it is one method reading `CD8B` and one defaulting.
+
+  **What is still not known, and is not attempted.** 48% of these cells express *neither* `CD4`
+  nor `CD8A`/`CD8B`. For half the cluster there is no per-cell information at all, which is why
+  the two models correlate below chance. The claim is therefore **cluster-level only** —
+  aggregation over 6,674 cells recovers a fraction that no individual cell carries, because
+  dropout dilutes a cluster-level fraction but cannot invent one. Per-cell CD4/CD8 assignment
+  is not recoverable from this data.
+
+  **Consequence to state explicitly:** this flips the dataset's CD4:CD8 ratio relative to both
+  inherited labellings, which call the cluster 100% `CD4+ T cell`. With cluster 2 as CD8, CD8
+  is ~42% against CD4 ~34.5% — atypical for PBMCs, where ~2:1 CD4-dominant is the norm. **The
+  ratio must be reported as a consequence of this call, not as an independent finding**, and
+  the disagreement with the inherited labels stated alongside it.
+
+  `CD8 T naive` is its own coarse group rather than merged into `CD8 T`: same lineage, very
+  different activation state, and both clear the pseudobulk size check alone (control n = 1,139
+  and 1,152).
 - **There are no dendritic cells in this dataset, and the cluster first called DC is
   basophils.** `CD1C` reaches 0-5% in every cluster and `LILRA4` never exceeds 6%, so neither
   cDC2 nor pDC is present. Cluster 13 (157 cells) reads `HDC` 56%, `CPA3` 33%, `CLC` 30%,
