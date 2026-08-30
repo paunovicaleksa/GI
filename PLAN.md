@@ -258,6 +258,76 @@ is biology. The three artefacts in this analysis each needed a different compari
 needed per-cell distributions, the ribosomal artefact needed across-sample shares, and this one
 needed within-cell-type relative fold change.
 
+### Task 6 result — shared by expression, size-specific by composition
+
+Section 15. The question was asked four ways, and the ways disagree in an informative order.
+
+**No threshold at all — rank correlation between contrasts.** Spearman rho between a cell
+type's 40nm and 200nm fold changes. Monocytes 0.76 over every gene, 0.87 once soup and
+ribo/mito are dropped. High rho = the same genes move the same way under both sizes.
+
+**Pathways — the primary unit.** 77 clean monocyte pathways (FDR < 0.25, ambient_frac <= 0.5),
+and their NES spread across the three exposures has a **median of 0.26, 90th percentile 0.54**.
+Rows are flat: `IL-17` 2.69 / 2.30 / 2.39, `TNF` 2.34 / 1.99 / 2.25, `JAK-STAT` 1.73 / 1.74 /
+1.86, `Phagosome` -1.89 / -1.84 / -1.94. That is not an absence of evidence for
+size-specificity; it is 77 pathways actively agreeing.
+
+**The categorical table Task 6 asks for is wrong, and Section 15 demonstrates it.** At
+FDR < 0.25 and |NES| >= 1.5 it returns **37 monocyte pathways with size-specific labels against
+19 shared** — which, read alone, would be this project's headline. The check underneath asks
+where the *non-responding* contrasts of each "X only" pathway actually landed:
+
+| category | n | NES spread | median abs(NES) of the non-responders |
+|---|---|---|---|
+| 40nm only, down | 9 | 0.34 | **1.36** |
+| mixture only, up | 7 | 0.50 | **1.38** |
+| 200nm only, down | 6 | 0.27 | **1.36** |
+| shared up | 13 | **0.13** | — (none) |
+
+**Against a floor of 1.5.** `Antigen processing and presentation` is labelled 40nm-specific on
+-1.61 / -1.47 / -1.45: one number cleared the line by 0.11 and two missed by 0.03. Every
+size-specific category is an artefact of where the cutoff fell. `shared up` is the one category
+with no non-responders to explain away.
+
+**Composition answers differently, and that is the finding.**
+
+| monocytes | 40nm | 200nm | mixture |
+|---|---|---|---|
+| proportion, pp vs control | **-1.93** | **+3.46** | -0.16 |
+| proportion, CLR (closure-corrected) | -0.48 | +0.44 | -0.17 |
+| activation, NES IL-17 | 2.69 | 2.30 | 2.39 |
+| activation, NES TNF | 2.34 | 1.99 | 2.25 |
+
+CLR tracks the raw percentage points, so closure is not manufacturing the pattern. 40nm gives
+**fewer monocytes that are more activated**; 200nm **more monocytes, also activated**; the
+mixture leaves the count alone and mounts the full response. Task 6 has two answers on two
+axes, and reporting either alone would have been wrong.
+
+### The soup filter does not work genome-wide, and the control that showed it
+
+Recorded because the fix was the obvious one and it failed. `frac_le2 > 0.7` flags ambient
+contamination among Section 13's *top* DE genes. Applied across the whole genome it removes
+**97% of a lymphocyte's genes** (CD4 T: 17,997 -> 417), because 75% of them sit above 0.95
+simply because lymphocytes are small and shallow. There it measures sparsity, not soup.
+
+The control that settled it: recompute rho on an **expression-matched random gene set** of the
+same size, drawn from the same deciles, with soup genes **allowed**.
+
+| rho(soupfree) - rho(matched), 40nm/200nm | value |
+|---|---|
+| Treg / CD4 T / CD8 T naive / NK | -0.11 / -0.09 / -0.09 / -0.06 |
+| CD8 T / MAIT / B | -0.03 / -0.03 / -0.01 |
+| **Monocyte** | **+0.11** |
+
+Negative in seven of eight: removing soup does *less* than removing an equivalent amount of low
+expression, because rank correlation is attenuated by measurement noise and that is mostly what
+the filter was removing. Monocytes are the sole exception — and the sole cell type Section 14
+found a clean response in. Two unrelated diagnostics landing on the same cell type is the
+strongest internal consistency check in the analysis.
+
+**Generalises past this section:** a per-gene diagnostic calibrated on one gene population does
+not transfer to another. Same statistic, different question, wrong answer.
+
 ### 200nm is the least similar sample to control — the first size-dependent signal
 
 Before correcting anything, scanorama (Section 8) scores how much genuine population
@@ -698,18 +768,20 @@ kernel.
 | 12 | Composition analysis: cell-type proportions across the 4 samples | 119-127 | Generalized from 2 conditions to 4 samples |
 | 13 | DE: pseudobulk (counts summed per cell-type × sample) via `pydeseq2`, each exposed sample vs. control | 129-158 | Pseudobulk DESeq2 instead of per-cell diffxpy/scVI, per `CLAUDE.md`'s pseudoreplication concern |
 | 14 | Pathway enrichment: GSEA primary (`gseapy`, MSigDB Hallmark/KEGG/Reactome), ORA secondary | 159-165 | Tutorial uses ORA (`gp.enrichr`) only; `CLAUDE.md` prefers GSEA |
-| 15 | Size-specific effects: unique-to-40nm / unique-to-200nm / shared / mixture-only | — (new, Task 6) | Not in tutorial — nanoplastics-specific |
-| 16 | **Per-cell signature scoring** (`sc.tl.score_genes`, Hallmark `TNFA_SIGNALING_VIA_NFKB`): compare score *distributions* across samples and cell types; UMAP colored by score | 172-178 | Same mechanic as the tutorial's `datp_sig` scoring, different gene set — **promoted to Task 6 core**, see below. Skip the tutorial's `mannwhitneyu` (cell 177) |
+| 15 | Size-specific effects: contrast correlation, fold-change scatter, pathway NES heatmap, categorical table + sensitivity sweep, composition | — (new, Task 6) | Not in tutorial — nanoplastics-specific. **Delivers Task 6 on its own** |
+| 16 | **Per-cell signature scoring** (`sc.tl.score_genes`, Hallmark `TNFA_SIGNALING_VIA_NFKB`): compare score *distributions* across samples and cell types; UMAP colored by score | 172-178 | Same mechanic as the tutorial's `datp_sig` scoring, different gene set — **an addition, not core**, see below. Skip the tutorial's `mannwhitneyu` (cell 177) |
 
 Sections 1-9 → Tasks 1-2; 10-11b → Task 3; 12 → Task 4; 13-14 → Task 5;
-15-16 → Task 6.
+15 → Task 6. Section 16 sits outside the task list entirely.
 
-### Why Section 16 is core, not bonus
+### Section 16 — the additions section, and why per-cell scoring leads it
 
-`CLAUDE.md` lists signature scoring as bonus candidate #6, yet simultaneously
-describes it as complementing Task 5/6 "without betting on one gene" — which is
-core Task 6 reasoning. It is **not redundant** with Section 14's GSEA, because
-the two operate at different units of analysis:
+Section 16 is **not core**. The task list has six entries, Section 15 delivers Task 6, and
+everything in Section 16 is an addition chosen from the list further down. An earlier draft of
+this plan argued it was core Task 6 work; that was wrong and is corrected here.
+
+It leads the additions because it is the cheapest strong one. Signature scoring is **not
+redundant** with Section 14's GSEA — the two operate at different units of analysis:
 
 - **GSEA** runs on a ranked gene list from a **pseudobulk** contrast → one
   enrichment statistic per (cell type × contrast). Every cell in a group is
@@ -761,9 +833,10 @@ Work happens on branch `windows-env-setup` (not yet merged to `main`).
 | 11 — automated annotation (CellTypist + panhumanpy) | 3 | **done, verified** |
 | 11b — verification vs. inherited labels | 3 | **done**; new `EXTERNAL_TO_COMMON` assert not yet exercised |
 | 12 — composition (Task 4) | 4 | **done**; effect measure implemented, cell not yet re-run |
-| 13 - pseudobulk DE (Task 5) | 5 | **written**, cells not yet run |
-| 14 - pathway enrichment (Task 5) | 5 | **written**, cells not yet run |
-| 15 - size-specific effects (Task 6) | 6 | not started |
+| 13 - pseudobulk DE (Task 5) | 5 | **done, verified** |
+| 14 - pathway enrichment (Task 5) | 5 | **done, verified** (`KEGG_2021_Human`) |
+| 15 - size-specific effects (Task 6) | 6 | **written and verified offline**, cells not yet run in the notebook |
+| 16 - additions | — | not started; contents chosen from the list below |
 
 **Sections 4-12 have been walked through cell by cell** and their prose corrected against the
 outer-join / resolution-0.3 run. The recurring defect was a number hardcoded into markdown
@@ -1525,6 +1598,16 @@ Added during the build:
    monocytes recover at 99.7% purity and NK at 99.2% without any batch correction, so the
    headline result does not depend on scanorama. `Treg` and the B subsets do not separate
    without it. Cheap, and it converts an assurance into a measurement.
+
+10. **Mixture non-additivity.** The one question the third sample can answer that the other
+    two cannot: do two particle sizes together produce a response neither produces alone?
+    Regress the mixture's fold changes on the two singles per cell type; coefficients summing
+    near 1 with high R-squared means the mixture is a blend and adds nothing, while the
+    residuals are the mixture-specific signal already ranked. **Confound to state:** the
+    mixture is the deepest exposed sample (6,373 median counts against 5,477 and 4,440), so a
+    "mixture-only" gene may be one that is only *measurable* there. And with one sample per
+    condition this is a three-point description, not a test. Moved here from Section 15 during
+    the build — it is a genuinely new question rather than part of Task 6's four labels.
 
 ## Working process
 
