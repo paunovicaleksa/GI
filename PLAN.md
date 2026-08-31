@@ -911,7 +911,9 @@ Work happens on branch `windows-env-setup` (not yet merged to `main`).
 | 13 - pseudobulk DE (Task 5) | 5 | **done, verified** |
 | 14 - pathway enrichment (Task 5) | 5 | **done, verified** (`KEGG_2021_Human`) |
 | 15 - size-specific effects (Task 6) | 6 | **done, cold-run verified** |
-| 16 - additions | — | not started; contents chosen from the list below |
+| 16 - per-cell signature scoring (#7) | — | **done, cold-run verified** |
+| 17 - uncorrected-embedding control (#9) | — | **done, cold-run verified** |
+| 18 - mixture non-additivity (#10) | — | **done, cold-run verified** |
 
 **Sections 4-12 have been walked through cell by cell** and their prose corrected against the
 outer-join / resolution-0.3 run. The recurring defect was a number hardcoded into markdown
@@ -1635,6 +1637,75 @@ this project exists to find.
 pseudobulk column reflects which cells happened to be captured more than the sample's biology.
 Stated in Section 10 so Section 13 inherits an explicit list rather than discovering the problem
 as a failed model fit.
+
+### The three additions, and what they changed (Sections 16-18)
+
+Three of `PLAN.md`'s candidates were built, meeting the stated 3-5 target: **#7** per-cell
+signature scoring, **#9** the uncorrected-embedding control, **#10** mixture non-additivity.
+Candidates #1 (mito%/dissociation stress) and #4/CellTypist benchmarking were considered and
+dropped - #1 because scoping it as bonus-only meant its answer could change nothing
+downstream, and its preview showed mito% moving *with* sequencing depth (control 7,852 counts
+and highest mito%), which one donor cannot separate.
+
+Two candidates were rejected on the data rather than on cost, and both reasons belong in the
+report:
+- **Dose-response.** No concentration, particle count or exposure duration exists anywhere in
+  the metadata. 40nm/200nm/mixture is a *size* comparison. This file already refutes the dose
+  reading twice. (At equal mass 40nm delivers ~125x the particle number and ~5x the surface
+  area of 200nm, so "surface-area-dependent" is a legitimate framing for the discussion - but
+  without the dosing basis it is not an analysis.)
+- **Ligand-receptor.** Our lymphocytes carry monocyte cytokines as ambient soup, and the
+  contaminating transcripts *are* largely the ligands, so an all-pairs analysis would
+  manufacture interactions in exactly the direction of the artefact.
+
+**Section 16 answered its own question negatively, and the control is the point.** Five of six
+signatures give a better two-component than one-component fit inside monocytes, with real
+separation (2.1-2.6 SD). Refit **within each sample** and every one is unimodal. The high-mode
+share runs control 0.23 against 0.75 / 0.76 / 0.78, so the two modes are *exposed* and
+*unexposed*, not *took up particles* and *did not*. There is **no evidence of uptake-dependent
+heterogeneity**. What the section does deliver is per-cell corroboration that the monocyte
+response is uniform across all three exposures - Section 14's flat NES from a different
+direction.
+
+**Section 17: the headline does not need batch correction.** Task 4's monocyte proportions come
+back at -2.01 / +3.35 / -0.25 pp on the uncorrected embedding against -1.94 / +3.34 / -0.20
+with scanorama - largest disagreement **0.07 pp**. Monocytes recover at 100% / 98.9% purity
+with no correction, NK at 98.4% / 98.6%; ARI 0.871 on 11 uncorrected clusters against 17.
+Given that scanorama is platform-dependent, this matters: the signal is in the data before
+anything is adjusted. What correction buys is the **B memory / B naive split** - each recovers
+~100% into the *same* cluster, hence purity 45% and 52%.
+
+**Section 18: expression is additive in the mixture, composition is not.** Regressing the
+mixture's fold changes on the two singles gives coefficients summing to **0.93** at
+**R-squared 0.72** in monocytes - much the best fit - so two sizes together produce no
+response neither produces alone. The lymphocyte rows look strongly non-additive (0.53-0.66)
+and are not: a **symmetric control** rotating which contrast is predicted returns 0.76-0.96
+for the other two rotations, so only the mixture is odd, and depth explains it - 40nm and
+200nm are the two closest samples (5,477 / 4,440) while the mixture sits at 6,373. Without
+that control this would have been reported as a mixture-specific lymphocyte response.
+Residuals are noise (top-50 median max count 32.1 against 70.8 for the fit, mostly lncRNAs).
+
+This is the **third independent appearance** of the composition/expression dissociation: the
+monocyte *proportion* is flat in the mixture (-0.17 pp) while the singles move it -1.93 and
++3.38, which no additive model reproduces, yet the *expression* response is additive at 0.93.
+
+### Two corrections these sections forced
+
+1. **Hallmark `TNFA_SIGNALING_VIA_NFKB` does not contain `CXCL8`.** This file states it does,
+   and made `SYMBOL_MAP` load-bearing for that set on those grounds. In Enrichr's
+   `MSigDB_Hallmark_2020` the set has no `CXCL8` at all. `SYMBOL_MAP` is still load-bearing,
+   but for `Inflammatory Response`, `NOD-like receptor signaling` and `Chemokine signaling` -
+   the three sets `IL8` is actually in. This is why Section 16 scores a **panel**: the single
+   set named here would have missed this project's headline gene.
+2. **`Treg` does separate without batch correction.** This file records "`Treg` and the B
+   subsets do not separate without it". Measured in Section 17: `Treg` recovers at 96.6% into
+   its own cluster at 94.9% purity. Only the B half of that claim survives.
+
+**A process note worth keeping.** `sc.tl.score_genes_cell_cycle` labelled ~37% of cells G2M on
+median scores of -0.003. `MKI67` is detected in 0.17% of cells with **9** carrying 5+ counts,
+`TOP2A` 7, `CDK1` 2. scanpy assigns phase by argmax and returns G1 only when both scores are
+negative, so noise becomes "proliferation". The absence of proliferating cells is confirmed -
+by the marker counts, not by the phase call, which must not be reported as biology.
 
 ## Additional analyses — candidates outside the project description
 
