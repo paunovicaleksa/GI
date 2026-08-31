@@ -328,6 +328,66 @@ strongest internal consistency check in the analysis.
 **Generalises past this section:** a per-gene diagnostic calibrated on one gene population does
 not transfer to another. Same statistic, different question, wrong answer.
 
+### The pipeline is reproducible on a platform, not across one — and the biology survives anyway
+
+Established 2026-08-31 by rebuilding the environment from scratch on Linux and running
+`nbconvert --execute` on a cold kernel. **This is the first time the notebook has run
+end to end as one document:** every previous record covered Sections 1-11 only, and
+Sections 13-15 had been executed in a separate kernel resuming from the annotated
+checkpoint (their execution counts restarted at 2). The run is now clean - 74 cells,
+execution counts 1-74 strictly increasing, zero errors, ~12 minutes.
+
+**Sections 1-7 reproduce exactly across Windows and Linux.** 29,157 cells, 21,862 genes,
+13 MT and 85 ribosomal genes, 3,000 HVGs with 1,558 in all four batches, 22.8% of variance
+in 50 PCs.
+
+**Section 8 does not.** Scanorama's alignment scores differ in the third decimal -
+`0.84311864` on Windows against `0.84420339` on Linux. The cause is in
+`scanorama/scanorama.py`: `integrate()` seeds `numpy` and `random` (line 165), but
+`nn_approx()` builds an `AnnoyIndex` and never calls annoy's `set_seed()`. Tested
+directly: **two Linux processes give bit-identical embeddings** (max abs difference 0.0),
+so this is not run-to-run randomness - it is deterministic on a platform and not across
+one. That third-decimal difference is enough to move the neighbour graph, and Leiden at
+`resolution=0.3` returns **17 clusters on Linux against 15 on Windows**.
+
+**Consequence for `CELL_TYPES`:** the map is keyed on cluster integers, so it failed its
+own first assert. It has been re-derived from markers (see the Section 10 cell), which is
+what this file's renumbering rule already required. Note what caught it - the assert, not
+a wrong result downstream.
+
+**The renumbering is not a new result, and the marker evidence is how we know.** Every
+discriminating fraction reproduced: Basophil `HDC` 56 / `CPA3` 33 / `CLC` 30 / `GATA2` 13,
+Treg `FOXP3` 33, MAIT `SLC4A10` 64, B memory `CD27` 42 - all identical to the recorded
+values - and `CD8 T naive` at `CD4` 4 vs `CD8B` 53 against the recorded 2.9 vs 54.8. **The
+contested naive-CD8 call, this project's most-argued conclusion, replicates independently.**
+Sizes track too: Monocyte 1,649 against 1,659, NK 1,608 vs 1,630, B naive 1,220 vs 1,230.
+
+**The headline findings reproduce on the re-derived map:**
+
+| | recorded (Windows) | this run (Linux) |
+|---|---|---|
+| Monocyte pp, 40nm / 200nm / mixture | -1.93 / +3.46 / -0.16 | **-1.93 / +3.38 / -0.17** |
+| Monocyte CLR | -0.48 / +0.44 / -0.17 | **-0.48 / +0.43 / -0.17** |
+| Monocyte IL-17 NES at 200nm | +2.30, FDR 0.000 | **+2.270, FDR 0.000** |
+| Monocyte TNF NES at 200nm | +1.99 | **+1.984** |
+| clean monocyte pathways, 200nm/40nm/mixture | 42 / 59 / 58 | **44 / 61 / 58** |
+| clean lymphocyte pathways | 0 across all six | **0 across all six** |
+| agreement vs inherited / CoDi | 88.8% / 88.7% | **90.0% / 89.8%** |
+
+Every lymphocyte row still has significant pathways exactly equal to ambient-driven
+pathways - CD4 T 76/76, CD8 T 65/65, NK 37/37, Treg 47/47, MAIT 36/36, CD8 T naive 67/67.
+The ambient-RNA structure is not an artefact of one run.
+
+**What this licenses and what it does not.** It is a genuine robustness check: the
+composition and pathway results survive a different platform, a different scanorama
+embedding, a different Leiden partition and an independently re-derived cluster map. It
+says nothing about the single-donor limitation, which is untouched - these are still one
+sample per condition.
+
+**For the report:** state that cluster IDs are platform-dependent and that the map is
+re-derived per run. Pinning `scanorama` does not fix it; only patching `set_seed()` into
+`nn_approx` would, and that is upstream code.
+
 ### 200nm is the least similar sample to control — the first size-dependent signal
 
 Before correcting anything, scanorama (Section 8) scores how much genuine population
@@ -673,6 +733,21 @@ because 3.10 went security-only (source-release) from 3.10.12 onward.
 
 ### Setup
 
+**Ubuntu note (found 2026-08-31):** a stock Ubuntu 24.04 box has `python3.12` but not
+`python3.12-venv`, so `python3.12 -m venv .venv` fails with *"ensurepip is not available"*.
+Either `apt install python3.12-venv` (needs sudo), or create the venv without pip and
+bootstrap it from the system copy, which needs no root:
+
+```bash
+python3.12 -m venv .venv --without-pip
+.venv/bin/python -c "import sys; sys.path.insert(0, '/usr/lib/python3/dist-packages'); \
+  from pip._internal.cli.main import main; sys.exit(main(['install','-U','pip','setuptools','wheel']))"
+```
+
+Also note `scikit-misc` is missing from **both** lock files even though `requirements.txt`
+pins it - the freezes predate it. Install from `requirements.txt`, not from a lock.
+
+
 `.venv/` is local and git-ignored — never commit it.
 
 ```bash
@@ -831,11 +906,11 @@ Work happens on branch `windows-env-setup` (not yet merged to `main`).
 | 9 — neighbours, UMAP, Leiden | 2 | **done, verified** (`RESOLUTION = 0.3`, 15 clusters) |
 | 10 — marker genes + cluster annotation | 3 | **done, verified**; prose rewritten for the new numbering |
 | 11 — automated annotation (CellTypist + panhumanpy) | 3 | **done, verified** |
-| 11b — verification vs. inherited labels | 3 | **done**; new `EXTERNAL_TO_COMMON` assert not yet exercised |
-| 12 — composition (Task 4) | 4 | **done**; effect measure implemented, cell not yet re-run |
+| 11b — verification vs. inherited labels | 3 | **done, cold-run verified** (90.0% / 89.8%) |
+| 12 — composition (Task 4) | 4 | **done, cold-run verified** |
 | 13 - pseudobulk DE (Task 5) | 5 | **done, verified** |
 | 14 - pathway enrichment (Task 5) | 5 | **done, verified** (`KEGG_2021_Human`) |
-| 15 - size-specific effects (Task 6) | 6 | **written and verified offline**, cells not yet run in the notebook |
+| 15 - size-specific effects (Task 6) | 6 | **done, cold-run verified** |
 | 16 - additions | — | not started; contents chosen from the list below |
 
 **Sections 4-12 have been walked through cell by cell** and their prose corrected against the
@@ -1067,15 +1142,17 @@ enter the main object at all.
 
 ### Section 6 outcome
 
-3,000 HVGs flagged of 20,387 genes; `subset=False`, so nothing was discarded.
+3,000 HVGs flagged of 21,862 genes; `subset=False`, so nothing was discarded.
+(This line read "of 20,387 genes" until 2026-08-31 - an inner-join figure left behind by the
+outer-join switch. The notebook's own output had said 21,862 all along.)
 
 **The mean–variance correction demonstrably worked:** only **1 of 85** ribosomal genes
 and **0 of 13** mitochondrial genes were selected. Those are among the most highly
 expressed genes in every cell, so a naive variance ranking would have put them at the
 top — excluding them is the whole purpose of `seurat_v3`'s loess fit.
 
-**1,711 genes are variable in all four samples** (`highly_variable_nbatches == 4`). That
-gives `n_top_genes` a data-driven floor it otherwise lacks: 3,000 reaches ~1,300 genes
+**1,558 genes are variable in all four samples** (`highly_variable_nbatches == 4`). That
+gives `n_top_genes` a data-driven floor it otherwise lacks: 3,000 reaches ~1,450 genes
 past the reproducible core. This is the softest parameter in the pipeline — unlike
 `target_sum=1e4` (forced by CellTypist) or the QC thresholds (derived from the data),
 it is conventional. The tutorial's stated heuristic is "3k is fine for 10k cells"; we
