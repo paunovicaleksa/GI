@@ -7,3 +7,6 @@ __pycache__/
 # analysis outputs — intermediates are large and regenerable
 results/
 figures/
+
+# stray JupyterLab scratch notebooks
+Untitled*.ipynb
